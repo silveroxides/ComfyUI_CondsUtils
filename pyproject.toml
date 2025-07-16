@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI_ReduxEmbedToolkit"
 description = 'Custom nodes for managing, saving and loading of T5XXL and Redux/Style based embeddings.'
-version = "1.0.0"
+version = "1.0.1"
 license = { file = "LICENSE" }
 
 [project.urls]
