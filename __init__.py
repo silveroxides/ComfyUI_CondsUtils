@@ -3,15 +3,16 @@ import os
 import json
 import folder_paths
 import comfy.utils
-
+from comfy.comfy_types import IO, ComfyNodeABC, InputTypeDict, FileLocator
 from comfy.cli_args import args
 
+folder_paths.add_model_folder_path("conds", os.path.join(folder_paths.models_dir, "conds"), is_default=True)
 
 class SaveReduxEmb:
     def __init__(self):
         # Get the list of base embedding directories
         # self.output_dir will be a LIST of paths
-        self.output_dir = folder_paths.get_folder_paths("embeddings")
+        self.output_dir = folder_paths.get_folder_paths("conds")
         # REMOVED: os.makedirs(self.output_dir, exist_ok=True) - This was incorrect
 
     @classmethod
@@ -76,7 +77,7 @@ class LoadReduxEmb:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {"conditioning": ("CONDITIONING", ),
-                             "embedding_name": (folder_paths.get_filename_list("embeddings"), ),
+                             "embedding_name": (folder_paths.get_filename_list("conds"), ),
                              "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.001}),
                              "strength_type": (["multiply", "attn_bias"], ),
                              }}
@@ -86,7 +87,7 @@ class LoadReduxEmb:
     CATEGORY = "conditioning/style_model"
 
     def apply_reduxembed(self, conditioning, embedding_name, strength, strength_type):
-        embedding_path = folder_paths.get_full_path_or_raise("embeddings", embedding_name)
+        embedding_path = folder_paths.get_full_path_or_raise("conds", embedding_name)
         cond_embed = comfy.utils.load_torch_file(embedding_path)
         cond = cond_embed["redux"].unsqueeze(dim=0)
         # cond = style_model.get_cond(clip_vision_output).flatten(start_dim=0, end_dim=1).unsqueeze(dim=0)
@@ -139,22 +140,22 @@ class SaveCondsEmb:
     def __init__(self):
         # Get the list of base embedding directories
         # self.output_dir will be a LIST of paths
-        self.output_dir = folder_paths.get_folder_paths("embeddings")
+        self.output_dir = folder_paths.get_folder_paths("conds")
         # REMOVED: os.makedirs(self.output_dir, exist_ok=True) - This was incorrect
 
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {"conditioning": ("CONDITIONING", ),
-                             "filename_prefix": ("STRING", {"default": "t5xxl_embeddings/ComfyUI_T5XXL_embed"}),
+                             "filename_prefix": ("STRING", {"default": "t5xxl_conds/ComfyUI_T5XXL_conds"}),
                              }
                }
     RETURN_TYPES = ()
-    FUNCTION = "save_conds_emb"
+    FUNCTION = "save_conds"
     OUTPUT_NODE = True
 
     CATEGORY = "conditioning/advanced"
 
-    def save_conds_emb(self, conditioning, filename_prefix):
+    def save_conds(self, conditioning, filename_prefix):
         # --- Prepare Embedding Data ---
         metadata = {}
         for t in conditioning:
@@ -187,7 +188,7 @@ class SaveCondsEmb:
                     print(f"Warning: Could not find a unique filename for prefix '{filename_prefix}' after {max_counter} attempts.")
                     return {"ui": {"text": [f"Error: Max file number reached for {filename_prefix}"]}}
 
-            print(f"Saving T5XXL embedding to: {save_path}")
+            print(f"Saving T5XXL conds to: {save_path}")
             comfy.utils.save_torch_file(t5xxl_emb, save_path, metadata=metadata)
 
         return {}
@@ -196,17 +197,17 @@ class LoadT5XXLEmb:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {"conditioning": ("CONDITIONING", ),
-                             "embedding_name": (folder_paths.get_filename_list("embeddings"), ),
+                             "embedding_name": (folder_paths.get_filename_list("conds"), ),
                              "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.001}),
                              "strength_type": (["multiply", "attn_bias"], ),
                              }}
     RETURN_TYPES = ("CONDITIONING",)
-    FUNCTION = "apply_t5xxlembed"
+    FUNCTION = "apply_t5xxl_conds"
 
     CATEGORY = "conditioning/advanced"
 
-    def apply_t5xxlembed(self, conditioning, embedding_name, strength, strength_type):
-        embedding_path = folder_paths.get_full_path_or_raise("embeddings", embedding_name)
+    def apply_t5xxl_conds(self, conditioning, embedding_name, strength, strength_type):
+        embedding_path = folder_paths.get_full_path_or_raise("conds", embedding_name)
         cond_embed = comfy.utils.load_torch_file(embedding_path)
         cond = cond_embed["t5xxl"].unsqueeze(dim=0)
         # cond = style_model.get_cond(clip_vision_output).flatten(start_dim=0, end_dim=1).unsqueeze(dim=0)
@@ -255,12 +256,56 @@ class LoadT5XXLEmb:
 
         return (c_out,)
 
+class LoadT5XXLConds:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {"embedding_name": (folder_paths.get_filename_list("conds"), ),
+                             }}
+    RETURN_TYPES = ("CONDITIONING",)
+    FUNCTION = "load_t5xxl_conds"
+
+    CATEGORY = "conditioning/advanced"
+
+    def load_t5xxl_conds(self, embedding_name):
+        embedding_path = folder_paths.get_full_path_or_raise("conds", embedding_name)
+        cond_embed = comfy.utils.load_torch_file(embedding_path)
+        c_out = []
+        cond = cond_embed["t5xxl"].unsqueeze(dim=0)
+        # cond = style_model.get_cond(clip_vision_output).flatten(start_dim=0, end_dim=1).unsqueeze(dim=0)
+
+        c_out.append([cond, {"pooled_output": None}])
+
+        return (c_out,)
+
+class TextEncodeEmbedding(ComfyNodeABC):
+    def __init__(self):
+        self.output_dir = folder_paths.get_folder_paths("conds")
+
+    @classmethod
+    def INPUT_TYPES(s) -> InputTypeDict:
+        return {
+            "required": {
+                "text": (IO.STRING, {"multiline": True, "dynamicPrompts": True, "tooltip": "The text to be encoded."}),
+                "clip": (IO.CLIP, {"tooltip": "The CLIP model used for encoding the text."})
+            }
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save_embedding"
+
+    OUTPUT_NODE = True
+
+    CATEGORY = "_for_testing"
+
+    def save_embedding(self, samples, filename_prefix="ComfyUI", prompt=None, extra_pnginfo=None):
+        full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, self.output_dir)
 
 NODE_CLASS_MAPPINGS = {
     "SaveReduxEmb": SaveReduxEmb,
     "LoadReduxEmb": LoadReduxEmb,
     "SaveCondsEmb": SaveCondsEmb,
     "LoadT5XXLEmb": LoadT5XXLEmb,
+    "LoadT5XXLConds": LoadT5XXLConds,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -268,4 +313,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadReduxEmb": "Load and Apply Redux Embedding",
     "SaveCondsEmb": "Save T5XXL conds as Embedded prompt",
     "LoadT5XXLEmb": "Load and Apply saved T5XXL Embedding",
+    "LoadT5XXLConds": "Load Pre-computed T5XXL Conds",
 }
