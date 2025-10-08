@@ -10,10 +10,7 @@ folder_paths.add_model_folder_path("conds", os.path.join(folder_paths.models_dir
 
 class SaveReduxEmb:
     def __init__(self):
-        # Get the list of base embedding directories
-        # self.output_dir will be a LIST of paths
         self.output_dir = folder_paths.get_folder_paths("conds")
-        # REMOVED: os.makedirs(self.output_dir, exist_ok=True) - This was incorrect
 
     @classmethod
     def INPUT_TYPES(s):
@@ -29,27 +26,15 @@ class SaveReduxEmb:
     CATEGORY = "conditioning/style_model"
 
     def save_redux_emb(self, style_model, clip_vision_output, filename_prefix):
-        # --- Prepare Embedding Data ---
         metadata = {}
         cond_flattened = style_model.get_cond(clip_vision_output).flatten(start_dim=0, end_dim=1)
         flattened_shape = (cond_flattened.shape[0], cond_flattened.shape[1])
         cond_emb = torch.zeros(flattened_shape, dtype=torch.float32)
         cond_emb[:cond_flattened.shape[0], :cond_flattened.shape[1]] = cond_flattened.to(dtype=torch.float32)
         redux_emb = {"redux": cond_emb}
-
-        # --- File Naming and Saving Logic ---
-        # Split the prefix into directory and base filename components
         base_path, filename_base = os.path.split(filename_prefix)
-
-        # Use the *first* path from the list of embedding directories
-        # This is the standard convention in ComfyUI for output nodes
         primary_output_dir = self.output_dir[0]
-
-        # Construct the full folder path relative to the *primary* embeddings directory
         full_output_folder = os.path.join(primary_output_dir, base_path)
-
-        # Ensure the target sub-directory exists (relative to the primary output dir)
-        # This call IS necessary here to handle subdirs in filename_prefix
         os.makedirs(full_output_folder, exist_ok=True)
 
         counter = 1
@@ -90,7 +75,6 @@ class LoadReduxEmb:
         embedding_path = folder_paths.get_full_path_or_raise("conds", embedding_name)
         cond_embed = comfy.utils.load_torch_file(embedding_path)
         cond = cond_embed["redux"].unsqueeze(dim=0)
-        # cond = style_model.get_cond(clip_vision_output).flatten(start_dim=0, end_dim=1).unsqueeze(dim=0)
         if strength_type == "multiply":
             cond *= strength
 
@@ -99,34 +83,21 @@ class LoadReduxEmb:
         for t in conditioning:
             (txt, keys) = t
             keys = keys.copy()
-            # even if the strength is 1.0 (i.e, no change), if there's already a mask, we have to add to it
             if "attention_mask" in keys or (strength_type == "attn_bias" and strength != 1.0):
-                # math.log raises an error if the argument is zero
-                # torch.log returns -inf, which is what we want
                 attn_bias = torch.log(torch.Tensor([strength if strength_type == "attn_bias" else 1.0]))
-                # get the size of the mask image
                 mask_ref_size = keys.get("attention_mask_img_shape", (1, 1))
                 n_ref = mask_ref_size[0] * mask_ref_size[1]
                 n_txt = txt.shape[1]
-                # grab the existing mask
                 mask = keys.get("attention_mask", None)
-                # create a default mask if it doesn't exist
                 if mask is None:
                     mask = torch.zeros((txt.shape[0], n_txt + n_ref, n_txt + n_ref), dtype=torch.float16)
-                # convert the mask dtype, because it might be boolean
-                # we want it to be interpreted as a bias
                 if mask.dtype == torch.bool:
-                    # log(True) = log(1) = 0
-                    # log(False) = log(0) = -inf
                     mask = torch.log(mask.to(dtype=torch.float16))
-                # now we make the mask bigger to add space for our new tokens
                 new_mask = torch.zeros((txt.shape[0], n_txt + n + n_ref, n_txt + n + n_ref), dtype=torch.float16)
-                # copy over the old mask, in quandrants
                 new_mask[:, :n_txt, :n_txt] = mask[:, :n_txt, :n_txt]
                 new_mask[:, :n_txt, n_txt+n:] = mask[:, :n_txt, n_txt:]
                 new_mask[:, n_txt+n:, :n_txt] = mask[:, n_txt:, :n_txt]
                 new_mask[:, n_txt+n:, n_txt+n:] = mask[:, n_txt:, n_txt:]
-                # now fill in the attention bias to our redux tokens
                 new_mask[:, :n_txt, n_txt:n_txt+n] = attn_bias
                 new_mask[:, n_txt+n:, n_txt:n_txt+n] = attn_bias
                 keys["attention_mask"] = new_mask.to(txt.device)
@@ -138,10 +109,7 @@ class LoadReduxEmb:
 
 class SaveCondsEmb:
     def __init__(self):
-        # Get the list of base embedding directories
-        # self.output_dir will be a LIST of paths
         self.output_dir = folder_paths.get_folder_paths("conds")
-        # REMOVED: os.makedirs(self.output_dir, exist_ok=True) - This was incorrect
 
     @classmethod
     def INPUT_TYPES(s):
@@ -156,7 +124,6 @@ class SaveCondsEmb:
     CATEGORY = "conditioning/advanced"
 
     def save_conds(self, conditioning, filename_prefix):
-        # --- Prepare Embedding Data ---
         metadata = {}
         for t in conditioning:
             (txt, keys) = t
@@ -210,7 +177,6 @@ class LoadT5XXLEmb:
         embedding_path = folder_paths.get_full_path_or_raise("conds", embedding_name)
         cond_embed = comfy.utils.load_torch_file(embedding_path)
         cond = cond_embed["t5xxl"].unsqueeze(dim=0)
-        # cond = style_model.get_cond(clip_vision_output).flatten(start_dim=0, end_dim=1).unsqueeze(dim=0)
         if strength_type == "multiply":
             cond *= strength
 
@@ -219,34 +185,21 @@ class LoadT5XXLEmb:
         for t in conditioning:
             (txt, keys) = t
             keys = keys.copy()
-            # even if the strength is 1.0 (i.e, no change), if there's already a mask, we have to add to it
             if "attention_mask" in keys or (strength_type == "attn_bias" and strength != 1.0):
-                # math.log raises an error if the argument is zero
-                # torch.log returns -inf, which is what we want
                 attn_bias = torch.log(torch.Tensor([strength if strength_type == "attn_bias" else 1.0]))
-                # get the size of the mask image
                 mask_ref_size = keys.get("attention_mask_img_shape", (1, 1))
                 n_ref = mask_ref_size[0] * mask_ref_size[1]
                 n_txt = txt.shape[1]
-                # grab the existing mask
                 mask = keys.get("attention_mask", None)
-                # create a default mask if it doesn't exist
                 if mask is None:
                     mask = torch.zeros((txt.shape[0], n_txt + n_ref, n_txt + n_ref), dtype=torch.float16)
-                # convert the mask dtype, because it might be boolean
-                # we want it to be interpreted as a bias
                 if mask.dtype == torch.bool:
-                    # log(True) = log(1) = 0
-                    # log(False) = log(0) = -inf
                     mask = torch.log(mask.to(dtype=torch.float16))
-                # now we make the mask bigger to add space for our new tokens
                 new_mask = torch.zeros((txt.shape[0], n_txt + n + n_ref, n_txt + n + n_ref), dtype=torch.float16)
-                # copy over the old mask, in quandrants
                 new_mask[:, :n_txt, :n_txt] = mask[:, :n_txt, :n_txt]
                 new_mask[:, :n_txt, n_txt+n:] = mask[:, :n_txt, n_txt:]
                 new_mask[:, n_txt+n:, :n_txt] = mask[:, n_txt:, :n_txt]
                 new_mask[:, n_txt+n:, n_txt+n:] = mask[:, n_txt:, n_txt:]
-                # now fill in the attention bias to our redux tokens
                 new_mask[:, :n_txt, n_txt:n_txt+n] = attn_bias
                 new_mask[:, n_txt+n:, n_txt:n_txt+n] = attn_bias
                 keys["attention_mask"] = new_mask.to(txt.device)
@@ -270,11 +223,81 @@ class LoadT5XXLConds:
         embedding_path = folder_paths.get_full_path_or_raise("conds", embedding_name)
         cond_embed = comfy.utils.load_torch_file(embedding_path)
         c_out = []
+
         cond = cond_embed["t5xxl"].unsqueeze(dim=0)
-        # cond = style_model.get_cond(clip_vision_output).flatten(start_dim=0, end_dim=1).unsqueeze(dim=0)
 
         c_out.append([cond, {"pooled_output": None}])
 
+        return (c_out,)
+
+class InsertT5XXLEmb:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "conditioning": ("CONDITIONING",),
+                "embedding_name": (folder_paths.get_filename_list("conds"),),
+                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.001}),
+                "strength_type": (["attn_bias", "multiply"],),
+                "insert_at_index": ("INT", {"default": 1, "min": 0, "max": 4096}),
+            }
+        }
+
+    RETURN_TYPES = ("CONDITIONING",)
+    FUNCTION = "insert_t5xxl_conds"
+
+    CATEGORY = "conditioning/advanced"
+
+    def insert_t5xxl_conds(self, conditioning, embedding_name, strength, strength_type, insert_at_index):
+        embedding_path = folder_paths.get_full_path_or_raise("conds", embedding_name)
+        cond_embed = comfy.utils.load_torch_file(embedding_path)
+        raw_cond = cond_embed["t5xxl"].unsqueeze(dim=0)
+        cond = raw_cond[:, :-1, :]
+        if strength_type == "multiply":
+            cond *= strength
+        n_cond = cond.shape[1]
+        c_out = []
+        for t in conditioning:
+            (txt, keys) = t
+            keys = keys.copy()
+            cond = cond.to(txt.device, dtype=txt.dtype)
+            n_txt_original = txt.shape[1]
+            safe_insert_at_index = min(insert_at_index, n_txt_original)
+            txt_part1 = txt[:, :safe_insert_at_index, :]
+            txt_part2 = txt[:, safe_insert_at_index:, :]
+            new_txt = torch.cat((txt_part1, cond, txt_part2), dim=1)
+            if "attention_mask" in keys or (strength_type == "attn_bias" and strength != 1.0):
+                attn_bias = torch.log(torch.tensor(strength if strength_type == "attn_bias" else 1.0, dtype=torch.float16))
+                mask_ref_size = keys.get("attention_mask_img_shape", (1, 1))
+                n_ref = mask_ref_size[0] * mask_ref_size[1]
+                mask = keys.get("attention_mask", None)
+                if mask is None:
+                    mask = torch.zeros((txt.shape[0], n_txt_original + n_ref, n_txt_original + n_ref), dtype=torch.float16)
+                if mask.dtype == torch.bool:
+                    mask = torch.log(mask.to(dtype=torch.float16))
+                n_part1 = txt_part1.shape[1]
+                n_part2 = txt_part2.shape[1]
+                n_new_txt = new_txt.shape[1]
+                new_mask_size = n_new_txt + n_ref
+                new_mask = torch.zeros((txt.shape[0], new_mask_size, new_mask_size), dtype=torch.float16)
+                p1_end = n_part1
+                cond_end = n_part1 + n_cond
+                p2_end = n_new_txt
+                new_mask[:, :p1_end, :p1_end] = mask[:, :n_part1, :n_part1]
+                new_mask[:, :p1_end, cond_end:p2_end] = mask[:, :n_part1, n_part1:n_txt_original]
+                new_mask[:, cond_end:p2_end, :p1_end] = mask[:, n_part1:n_txt_original, :n_part1]
+                new_mask[:, cond_end:p2_end, cond_end:p2_end] = mask[:, n_part1:n_txt_original, n_part1:n_txt_original]
+                if n_ref > 0:
+                    new_mask[:, p2_end:, :p1_end] = mask[:, n_txt_original:, :n_part1]
+                    new_mask[:, p2_end:, cond_end:p2_end] = mask[:, n_txt_original:, n_part1:n_txt_original]
+                    new_mask[:, :p1_end, p2_end:] = mask[:, :n_part1, n_txt_original:]
+                    new_mask[:, cond_end:p2_end, p2_end:] = mask[:, n_part1:n_txt_original, n_txt_original:]
+                    new_mask[:, p2_end:, p2_end:] = mask[:, n_txt_original:, n_txt_original:]
+                new_mask[:, :, p1_end:cond_end] = attn_bias
+                new_mask[:, p1_end:cond_end, :] = attn_bias
+                keys["attention_mask"] = new_mask.to(txt.device)
+                keys["attention_mask_img_shape"] = mask_ref_size
+            c_out.append([new_txt, keys])
         return (c_out,)
 
 class TextEncodeEmbedding(ComfyNodeABC):
@@ -306,12 +329,14 @@ NODE_CLASS_MAPPINGS = {
     "SaveCondsEmb": SaveCondsEmb,
     "LoadT5XXLEmb": LoadT5XXLEmb,
     "LoadT5XXLConds": LoadT5XXLConds,
+    "InsertT5XXLEmb": InsertT5XXLEmb,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "SaveReduxEmb": "Save Redux Embedding",
     "LoadReduxEmb": "Load and Apply Redux Embedding",
-    "SaveCondsEmb": "Save T5XXL conds as Embedded prompt",
-    "LoadT5XXLEmb": "Load and Apply saved T5XXL Embedding",
+    "SaveCondsEmb": "Save T5XXL conds Pre-computed as Safetensors file",
+    "LoadT5XXLEmb": "Load and Apply Pre-computed T5XXL Conds",
     "LoadT5XXLConds": "Load Pre-computed T5XXL Conds",
+    "InsertT5XXLEmb": "Load T5XXL Embedding and insert to conds by splicing",
 }
