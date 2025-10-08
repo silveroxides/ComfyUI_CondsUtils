@@ -1,14 +1,14 @@
 [project]
-name = "ComfyUI_ReduxEmbedToolkit"
-description = 'Custom nodes for managing, saving and loading of T5XXL and Redux/Style based embeddings.'
-version = "1.0.1"
+name = "ComfyUI_CondsUtils"
+description = 'Custom nodes for modifying, saving and loading of various conditionings.'
+version = "0.0.1"
 license = { file = "LICENSE" }
 
 [project.urls]
-Repository = "https://github.com/silveroxides/ComfyUI_ReduxEmbedToolkit"
+Repository = "https://github.com/silveroxides/ComfyUI_CondsUtils"
 #  Used by Comfy Registry https://comfyregistry.org
 
 [tool.comfy]
 PublisherId = "silveroxides"
-DisplayName = "Redux & T5XXL Embed Toolkit"
+DisplayName = "WIP Conditioning Toolkit"
 Icon = ""
