@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI_CondsUtils"
 description = 'Custom nodes for modifying, saving and loading of various conditionings.'
-version = "0.0.1"
+version = "0.0.2"
 license = { file = "LICENSE" }
 
 [project.urls]
