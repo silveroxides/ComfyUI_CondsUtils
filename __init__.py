@@ -114,7 +114,8 @@ class SaveCondsEmb:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {"conditioning": ("CONDITIONING", ),
-                             "filename_prefix": ("STRING", {"default": "t5xxl_conds/ComfyUI_T5XXL_conds"}),
+                             "text_encoder": (["t5xxl", "umt5xxl"], ),
+                             "filename_prefix": ("STRING", {"default": "te_conds"}),
                              }
                }
     RETURN_TYPES = ()
@@ -123,7 +124,7 @@ class SaveCondsEmb:
 
     CATEGORY = "conditioning/advanced"
 
-    def save_conds(self, conditioning, filename_prefix):
+    def save_conds(self, conditioning, text_encoder, filename_prefix):
         metadata = {}
         for t in conditioning:
             (txt, keys) = t
@@ -133,7 +134,7 @@ class SaveCondsEmb:
             cond_emb = torch.zeros(txt_shape, dtype=torch.float32)
             cond_emb.to(dtype=torch.float32).contiguous()
             cond_emb[:txt.shape[0], :txt.shape[1]] = txt.to(dtype=torch.float32).contiguous()
-            t5xxl_emb = {"t5xxl": cond_emb}
+            te_emb = {text_encoder: cond_emb}
             base_path, filename_base = os.path.split(filename_prefix)
             primary_output_dir = self.output_dir[0]
             full_output_folder = os.path.join(primary_output_dir, base_path)
@@ -143,7 +144,7 @@ class SaveCondsEmb:
             max_counter = 99999
 
             while True:
-                save_filename = f"{filename_base}_t5xxl_{counter:05}.safetensors"
+                save_filename = f"{filename_base}_{text_encoder}_{counter:05}.safetensors"
                 save_path = os.path.join(full_output_folder, save_filename)
 
                 if not os.path.exists(save_path):
@@ -155,28 +156,29 @@ class SaveCondsEmb:
                     print(f"Warning: Could not find a unique filename for prefix '{filename_prefix}' after {max_counter} attempts.")
                     return {"ui": {"text": [f"Error: Max file number reached for {filename_prefix}"]}}
 
-            print(f"Saving T5XXL conds to: {save_path}")
-            comfy.utils.save_torch_file(t5xxl_emb, save_path, metadata=metadata)
+            print(f"Saving TE conds to: {save_path}")
+            comfy.utils.save_torch_file(te_emb, save_path, metadata=metadata)
 
         return {}
 
-class LoadT5XXLEmb:
+class LoadTEConds:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {"conditioning": ("CONDITIONING", ),
+                             "text_encoder": (["t5xxl", "umt5xxl"], ),
                              "embedding_name": (folder_paths.get_filename_list("conds"), ),
                              "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.001}),
                              "strength_type": (["multiply", "attn_bias"], ),
                              }}
     RETURN_TYPES = ("CONDITIONING",)
-    FUNCTION = "apply_t5xxl_conds"
+    FUNCTION = "apply_te_conds"
 
     CATEGORY = "conditioning/advanced"
 
-    def apply_t5xxl_conds(self, conditioning, embedding_name, strength, strength_type):
+    def apply_te_conds(self, conditioning, text_encoder, embedding_name, strength, strength_type):
         embedding_path = folder_paths.get_full_path_or_raise("conds", embedding_name)
         cond_embed = comfy.utils.load_torch_file(embedding_path)
-        cond = cond_embed["t5xxl"].unsqueeze(dim=0)
+        cond = cond_embed[text_encoder].unsqueeze(dim=0)
         if strength_type == "multiply":
             cond *= strength
 
@@ -209,49 +211,51 @@ class LoadT5XXLEmb:
 
         return (c_out,)
 
-class LoadT5XXLConds:
+class LoadTEConds:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {"embedding_name": (folder_paths.get_filename_list("conds"), ),
+                             "text_encoder": (["t5xxl", "umt5xxl"], ),
                              }}
     RETURN_TYPES = ("CONDITIONING",)
-    FUNCTION = "load_t5xxl_conds"
+    FUNCTION = "load_te_conds"
 
     CATEGORY = "conditioning/advanced"
 
-    def load_t5xxl_conds(self, embedding_name):
+    def load_te_conds(self, embedding_name, text_encoder):
         embedding_path = folder_paths.get_full_path_or_raise("conds", embedding_name)
         cond_embed = comfy.utils.load_torch_file(embedding_path)
         c_out = []
 
-        cond = cond_embed["t5xxl"].unsqueeze(dim=0)
+        cond = cond_embed[text_encoder].unsqueeze(dim=0)
 
         c_out.append([cond, {"pooled_output": None}])
 
         return (c_out,)
 
-class InsertT5XXLEmb:
+class InsertTEConds:
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
                 "conditioning": ("CONDITIONING",),
+                "text_encoder": (["t5xxl", "umt5xxl"], ),
                 "embedding_name": (folder_paths.get_filename_list("conds"),),
-                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.001}),
+                "strength": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.001}),
                 "strength_type": (["attn_bias", "multiply"],),
                 "insert_at_index": ("INT", {"default": 1, "min": 0, "max": 4096}),
             }
         }
 
     RETURN_TYPES = ("CONDITIONING",)
-    FUNCTION = "insert_t5xxl_conds"
+    FUNCTION = "insert_te_conds"
 
     CATEGORY = "conditioning/advanced"
 
-    def insert_t5xxl_conds(self, conditioning, embedding_name, strength, strength_type, insert_at_index):
+    def insert_te_conds(self, conditioning, text_encoder, embedding_name, strength, strength_type, insert_at_index):
         embedding_path = folder_paths.get_full_path_or_raise("conds", embedding_name)
         cond_embed = comfy.utils.load_torch_file(embedding_path)
-        raw_cond = cond_embed["t5xxl"].unsqueeze(dim=0)
+        raw_cond = cond_embed[text_encoder].unsqueeze(dim=0)
         cond = raw_cond[:, :-1, :]
         if strength_type == "multiply":
             cond *= strength
@@ -327,16 +331,16 @@ NODE_CLASS_MAPPINGS = {
     "SaveReduxEmb": SaveReduxEmb,
     "LoadReduxEmb": LoadReduxEmb,
     "SaveCondsEmb": SaveCondsEmb,
-    "LoadT5XXLEmb": LoadT5XXLEmb,
-    "LoadT5XXLConds": LoadT5XXLConds,
-    "InsertT5XXLEmb": InsertT5XXLEmb,
+    "LoadTEConds": LoadTEConds,
+    "LoadTEConds": LoadTEConds,
+    "InsertTEConds": InsertTEConds,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "SaveReduxEmb": "Save Redux Embedding",
     "LoadReduxEmb": "Load and Apply Redux Embedding",
-    "SaveCondsEmb": "Save T5XXL conds Pre-computed as Safetensors file",
-    "LoadT5XXLEmb": "Load and Apply Pre-computed T5XXL Conds",
-    "LoadT5XXLConds": "Load Pre-computed T5XXL Conds",
-    "InsertT5XXLEmb": "Load T5XXL Embedding and insert to conds by splicing",
+    "SaveCondsEmb": "Save TE conds Pre-computed as Safetensors file",
+    "LoadTEConds": "Load and Apply Pre-computed TE Conds",
+    "LoadTEConds": "Load Pre-computed TE Conds",
+    "InsertTEConds": "Load TE Embedding and insert to conds by splicing",
 }
