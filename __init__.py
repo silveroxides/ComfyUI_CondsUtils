@@ -304,6 +304,75 @@ class InsertTEConds:
             c_out.append([new_txt, keys])
         return (c_out,)
 
+class InsertAttnConds:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "conditioning_main": ("CONDITIONING",),
+                "conditioning_attn": ("CONDITIONING",),
+                "strength": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.001}),
+                "strength_type": (["attn_bias", "multiply"],),
+                "insert_at_index": ("INT", {"default": 0, "min": 0, "max": 4096}),
+            }
+        }
+
+    RETURN_TYPES = ("CONDITIONING",)
+    FUNCTION = "insert_attn_conds"
+
+    CATEGORY = "conditioning/advanced"
+
+    def insert_attn_conds(self, conditioning_main, conditioning_attn, strength, strength_type, insert_at_index):
+        for i in conditioning_attn:
+            (txt_attn, keys_attn) = i
+            cond = txt_attn
+            if strength_type == "multiply":
+                cond *= strength
+        n_cond = cond.shape[1]
+        c_out = []
+        for t in conditioning_main:
+            (txt, keys) = t
+            keys = keys.copy()
+            cond = cond.to(txt.device, dtype=txt.dtype)
+            n_txt_original = txt.shape[1]
+            safe_insert_at_index = min(insert_at_index, n_txt_original)
+            txt_part1 = txt[:, :safe_insert_at_index, :]
+            txt_part2 = txt[:, safe_insert_at_index:, :]
+            new_txt = torch.cat((txt_part1, cond, txt_part2), dim=1)
+            if "attention_mask" in keys or (strength_type == "attn_bias" and strength != 1.0):
+                attn_bias = torch.log(torch.tensor(strength if strength_type == "attn_bias" else 1.0, dtype=torch.float16))
+                mask_ref_size = keys.get("attention_mask_img_shape", (1, 1))
+                n_ref = mask_ref_size[0] * mask_ref_size[1]
+                mask = keys.get("attention_mask", None)
+                if mask is None:
+                    mask = torch.zeros((txt.shape[0], n_txt_original + n_ref, n_txt_original + n_ref), dtype=torch.float16)
+                if mask.dtype == torch.bool:
+                    mask = torch.log(mask.to(dtype=torch.float16))
+                n_part1 = txt_part1.shape[1]
+                n_part2 = txt_part2.shape[1]
+                n_new_txt = new_txt.shape[1]
+                new_mask_size = n_new_txt + n_ref
+                new_mask = torch.zeros((txt.shape[0], new_mask_size, new_mask_size), dtype=torch.float16)
+                p1_end = n_part1
+                cond_end = n_part1 + n_cond
+                p2_end = n_new_txt
+                new_mask[:, :p1_end, :p1_end] = mask[:, :n_part1, :n_part1]
+                new_mask[:, :p1_end, cond_end:p2_end] = mask[:, :n_part1, n_part1:n_txt_original]
+                new_mask[:, cond_end:p2_end, :p1_end] = mask[:, n_part1:n_txt_original, :n_part1]
+                new_mask[:, cond_end:p2_end, cond_end:p2_end] = mask[:, n_part1:n_txt_original, n_part1:n_txt_original]
+                if n_ref > 0:
+                    new_mask[:, p2_end:, :p1_end] = mask[:, n_txt_original:, :n_part1]
+                    new_mask[:, p2_end:, cond_end:p2_end] = mask[:, n_txt_original:, n_part1:n_txt_original]
+                    new_mask[:, :p1_end, p2_end:] = mask[:, :n_part1, n_txt_original:]
+                    new_mask[:, cond_end:p2_end, p2_end:] = mask[:, n_part1:n_txt_original, n_txt_original:]
+                    new_mask[:, p2_end:, p2_end:] = mask[:, n_txt_original:, n_txt_original:]
+                new_mask[:, :, p1_end:cond_end] = attn_bias
+                new_mask[:, p1_end:cond_end, :] = attn_bias
+                keys["attention_mask"] = new_mask.to(txt.device)
+                keys["attention_mask_img_shape"] = mask_ref_size
+            c_out.append([new_txt, keys])
+        return (c_out,)
+
 class TextEncodeEmbedding(ComfyNodeABC):
     def __init__(self):
         self.output_dir = folder_paths.get_folder_paths("conds")
@@ -334,6 +403,7 @@ NODE_CLASS_MAPPINGS = {
     "LoadTEConds": LoadTEConds,
     "LoadTEConds": LoadTEConds,
     "InsertTEConds": InsertTEConds,
+    "InsertAttnConds": InsertAttnConds,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -343,4 +413,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadTEConds": "Load and Apply Pre-computed TE Conds",
     "LoadTEConds": "Load Pre-computed TE Conds",
     "InsertTEConds": "Load TE Embedding and insert to conds by splicing",
+    "InsertAttnConds": "Insert and apply attention to additional conds",
 }
