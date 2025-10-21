@@ -313,7 +313,7 @@ class InsertAttnConds:
                 "conditioning_attn": ("CONDITIONING",),
                 "strength": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.001}),
                 "strength_type": (["attn_bias", "multiply"],),
-                "insert_at_index": ("INT", {"default": 0, "min": 0, "max": 4096}),
+                "insert_at_index": ("INT", {"default": 0, "min": -1, "max": 4096}),
             }
         }
 
@@ -335,6 +335,8 @@ class InsertAttnConds:
             keys = keys.copy()
             cond = cond.to(txt.device, dtype=txt.dtype)
             n_txt_original = txt.shape[1]
+            if insert_at_index == -1:
+                insert_at_index = n_txt_original - 1
             safe_insert_at_index = min(insert_at_index, n_txt_original)
             txt_part1 = txt[:, :safe_insert_at_index, :]
             txt_part2 = txt[:, safe_insert_at_index:, :]
