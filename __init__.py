@@ -325,38 +325,38 @@ class InsertAttnConds:
     def insert_attn_conds(self, conditioning_main, conditioning_attn, strength, strength_type, insert_at_index):
         for i in conditioning_attn:
             (txt_attn, keys_attn) = i
-            cond = txt_attn
+            cond_attn = txt_attn
             if strength_type == "multiply":
-                cond *= strength
-        n_cond = cond.shape[1]
+                cond_attn *= strength
+        n_cond_attn = cond_attn.shape[1]
         c_out = []
         for t in conditioning_main:
             (txt, keys) = t
             keys = keys.copy()
-            cond = cond.to(txt.device, dtype=txt.dtype)
+            cond_attn = cond_attn.to(txt.device, dtype=txt.dtype)
             n_txt_original = txt.shape[1]
             if insert_at_index == -1:
                 insert_at_index = n_txt_original - 1
             safe_insert_at_index = min(insert_at_index, n_txt_original)
             txt_part1 = txt[:, :safe_insert_at_index, :]
             txt_part2 = txt[:, safe_insert_at_index:, :]
-            new_txt = torch.cat((txt_part1, cond, txt_part2), dim=1)
+            new_txt = torch.cat((txt_part1, cond_attn, txt_part2), dim=1)
             if "attention_mask" in keys or (strength_type == "attn_bias" and strength != 1.0):
-                attn_bias = torch.log(torch.tensor(strength if strength_type == "attn_bias" else 1.0, dtype=torch.float16))
+                attn_bias = torch.log(torch.tensor(strength if strength_type == "attn_bias" else 1.0, dtype=txt.dtype))
                 mask_ref_size = keys.get("attention_mask_img_shape", (1, 1))
                 n_ref = mask_ref_size[0] * mask_ref_size[1]
                 mask = keys.get("attention_mask", None)
                 if mask is None:
-                    mask = torch.zeros((txt.shape[0], n_txt_original + n_ref, n_txt_original + n_ref), dtype=torch.float16)
+                    mask = torch.zeros((txt.shape[0], n_txt_original + n_ref, n_txt_original + n_ref), dtype=txt.dtype)
                 if mask.dtype == torch.bool:
-                    mask = torch.log(mask.to(dtype=torch.float16))
+                    mask = torch.log(mask.to(dtype=txt.dtype))
                 n_part1 = txt_part1.shape[1]
                 n_part2 = txt_part2.shape[1]
                 n_new_txt = new_txt.shape[1]
                 new_mask_size = n_new_txt + n_ref
-                new_mask = torch.zeros((txt.shape[0], new_mask_size, new_mask_size), dtype=torch.float16)
+                new_mask = torch.zeros((txt.shape[0], new_mask_size, new_mask_size), dtype=txt.dtype)
                 p1_end = n_part1
-                cond_end = n_part1 + n_cond
+                cond_end = n_part1 + n_cond_attn
                 p2_end = n_new_txt
                 new_mask[:, :p1_end, :p1_end] = mask[:, :n_part1, :n_part1]
                 new_mask[:, :p1_end, cond_end:p2_end] = mask[:, :n_part1, n_part1:n_txt_original]
