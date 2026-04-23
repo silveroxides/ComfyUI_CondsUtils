@@ -350,6 +350,19 @@ class InsertAttnConds:
                     mask = torch.zeros((txt.shape[0], n_txt_original + n_ref, n_txt_original + n_ref), dtype=txt.dtype)
                 if mask.dtype == torch.bool:
                     mask = torch.log(mask.to(dtype=txt.dtype))
+                if mask.ndim == 2:
+                    # Some models (e.g. Anima) store a (batch, seq_len) padding mask rather
+                    # than a square (batch, seq, seq) attention-bias matrix.
+                    # Expand it: pairs where both tokens are valid get bias 0,
+                    # all other pairs get -inf so they are effectively masked out.
+                    valid = mask.bool()  # (batch, seq_len)
+                    valid_2d = valid.unsqueeze(2) & valid.unsqueeze(1)  # (batch, seq_len, seq_len)
+                    square = torch.full(
+                        (mask.shape[0], mask.shape[1], mask.shape[1]),
+                        float('-inf'), dtype=txt.dtype
+                    )
+                    square[valid_2d] = 0.0
+                    mask = square
                 n_part1 = txt_part1.shape[1]
                 n_part2 = txt_part2.shape[1]
                 n_new_txt = new_txt.shape[1]
