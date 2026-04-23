@@ -363,6 +363,14 @@ class InsertAttnConds:
                     )
                     square[valid_2d] = 0.0
                     mask = square
+                # If the mask doesn't cover the ref token slots (e.g. a text-only
+                # padding mask that has no knowledge of image ref tokens), pad it
+                # out to the expected (n_txt_original + n_ref) size with zeros so
+                # that the ref-token region splicing below has something to read from.
+                expected_mask_size = n_txt_original + n_ref
+                if mask.shape[1] < expected_mask_size:
+                    pad_size = expected_mask_size - mask.shape[1]
+                    mask = torch.nn.functional.pad(mask, (0, pad_size, 0, pad_size), value=0.0)
                 n_part1 = txt_part1.shape[1]
                 n_part2 = txt_part2.shape[1]
                 n_new_txt = new_txt.shape[1]
